@@ -1,0 +1,44 @@
+{
+  "name": "dsh-speed",
+  "version": "0.2.0",
+  "type": "module",
+  "description": "Model-aware Fast and Ultrafast picker for DSH OpenAI and Codex routes",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "lib",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-model-selection"
+      ]
+    }
+  },
+  "scripts": {
+    "test": "node --test test/core.test.js test/client.test.js test/runtime.test.js test/real-runtime.test.js test/native-auth.test.js test/proxy.test.js test/modal.test.js test/live-gate.test.js test/tui.test.js",
+    "test:live": "node test/live.mjs --live",
+    "test:e2e": "node --test test/e2e.test.js test/tui.e2e.test.js",
+    "test:live:agents": "DSH_LIVE_TESTS=1 DSH_LIVE_AGENTS=1 node --test --test-name-pattern=live-account test/e2e.test.js"
+  },
+  "engines": {
+    "node": ">=22.19"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "fast-check": "^4.10.2",
+    "playwright": "^1.64.0"
+  }
+}
