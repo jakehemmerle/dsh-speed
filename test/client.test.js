@@ -5,9 +5,9 @@ import vm from 'node:vm';
 
 // Deterministic hook harness: verify the picker wiring and async guards without
 // a second web server, a paid request, or altering the live DSH profile.
-async function harness(fetch) {
+async function harness(fetch, initial = { provider: 'openai', model: 'gpt-6-astra' }) {
   let exported, cursor = 0, hooks = [], effects = [], pending = [];
-  let current = { provider: 'openai', model: 'gpt-6-astra' };
+  let current = initial;
   const React = {
     createElement(type, props, ...children) { return { type, props: props ?? {}, children: children.flat() }; },
     useState(value) {
@@ -81,4 +81,10 @@ test('picker surfaces revoked saved tier and does not silently display Standard'
     assert.equal(unavailable.props.disabled, true);
     assert.equal(nodes(tree, 'span').some(n => n.props.role === 'alert'), true);
   } finally { ui.dispose(); }
+});
+
+test('proxy picker is report-driven', async () => {
+  const ui = await harness(async () => Response.json(report), { provider: 'providerproxy', model: 'gpt-6.1-sol' });
+  try { ui.render(); await settle(); const tree = ui.render(); assert.equal(nodes(tree, 'select').length, 1); assert.deepEqual(nodes(tree, 'option').map(n => n.props.value), ['standard', 'fast', 'ultrafast']); }
+  finally { ui.dispose(); }
 });
