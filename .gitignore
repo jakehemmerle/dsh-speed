@@ -1,1 +1,11 @@
 node_modules/
+result
+result-*
+test-results/
+
+# Beads / Dolt runtime files (the committed export is .beads/issues.jsonl)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
+*.gate.lock*

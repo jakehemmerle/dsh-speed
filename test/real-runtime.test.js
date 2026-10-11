@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 // Provide the HOST pi-ai entry to prove the shim intercepts its actual lazy
 // protocol stack. Fetch is mocked: no account secrets, model calls or charges.
 const entry = process.env.DSH_PI_AI_MODULE;
-test('default plugin loader patches the host adapter’s pi-ai instance, not a second copy', { skip: !entry }, async () => {
+test('default plugin loader patches the host adapter’s pi-ai instance, not a second copy', { skip: !entry && process.env.DSH_REQUIRE_ALL !== '1' }, async () => {
   const { createModels } = await import(pathToFileURL(entry).href);
   const prototype = Object.getPrototypeOf(createModels()), original = prototype.streamSimple;
   const effects = [], prior = process.argv[1];
@@ -26,7 +26,7 @@ test('default plugin loader patches the host adapter’s pi-ai instance, not a s
   }
   assert.strictEqual(prototype.streamSimple, original);
 });
-test('real pi-ai Codex Responses: Standard/Fast/Ultrafast reach authenticated HTTP JSON', { skip: !entry }, async () => {
+test('real pi-ai Codex Responses: Standard/Fast/Ultrafast reach authenticated HTTP JSON', { skip: !entry && process.env.DSH_REQUIRE_ALL !== '1' }, async () => {
   const base = new URL('.', pathToFileURL(entry));
   const { createModels } = await import(pathToFileURL(entry).href);
   const { openaiCodexProvider } = await import(new URL('providers/openai-codex.js', base).href);
@@ -61,7 +61,7 @@ test('real pi-ai Codex Responses: Standard/Fast/Ultrafast reach authenticated HT
     assert.equal(bodies.length, 3);
   } finally { shim.dispose(); }
 });
-test('real pi-ai OpenAI Responses: all tiers reach HTTP JSON through streamSimple', { skip: !entry }, async () => {
+test('real pi-ai OpenAI Responses: all tiers reach HTTP JSON through streamSimple', { skip: !entry && process.env.DSH_REQUIRE_ALL !== '1' }, async () => {
   const base = new URL('.', pathToFileURL(entry));
   const { createModels } = await import(pathToFileURL(entry).href);
   const { openaiProvider } = await import(new URL('providers/openai.js', base).href);

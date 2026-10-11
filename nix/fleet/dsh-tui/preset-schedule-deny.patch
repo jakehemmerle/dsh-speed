@@ -1,0 +1,92 @@
+--- a/lib/types/dsh-adapter/bundled-presets.js
++++ b/lib/types/dsh-adapter/bundled-presets.js
+@@ -4,6 +4,7 @@
+ import { pathToFileURL } from 'node:url';
+ import { parse } from 'yaml';
+ import { packagedPresetRoot } from './packaged-presets.js';
++import { presetForComposition, scheduleServiceMounted } from './schedule-deny-filter.js';
+ function declarativePresets(ctx) {
+     const service = ctx.get('agentPresets');
+     return service !== null && typeof service === 'object'
+@@ -52,12 +53,13 @@
+         }
+     }
+     const require = createRequire(ctx.baseUrl ?? import.meta.url);
++    const scheduleMounted = scheduleServiceMounted(loader);
+     for (const id of ['standard', 'ptc', 'minimal', 'cordis']) {
+         if (declared.has(id))
+             continue;
+         const path = require.resolve(`@deepseek-ai/dsh-web-app/presets/${id}.patch.yml`);
+         const owner = ctx.extend({ baseUrl: pathToFileURL(path).href });
+-        const dispose = await declarativePresets(owner).register(readPresetPatch(path));
++        const dispose = await declarativePresets(owner).register(presetForComposition(readPresetPatch(path), scheduleMounted));
+         ctx.effect(() => dispose);
+     }
+     if (!declared.has('liangshen')) {
+--- /dev/null
++++ b/lib/types/dsh-adapter/schedule-deny-filter.js
+@@ -0,0 +1,64 @@
++/**
++ * dsh 0.2.1-alpha presets deny `schedule_*` to subagents through
++ * `toolFilter.deny`. `tools.restrict()` rejects any name no plugin registered,
++ * and `dsh-tool-schedule` registers its tools only when the Host `schedule`
++ * service (`@deepseek-ai/dsh-schedule`, mounted by dsh-web-app) exists. A
++ * TUI-only profile has no such service, so every delegation failed
++ * (dsh-TUI #1450). Without the service, drop exactly these names from each
++ * deny list; any other unknown name still fails loudly.
++ */
++export const SCHEDULE_TOOLS = Object.freeze([
++    'schedule_create',
++    'schedule_delete',
++    'schedule_list',
++    'schedule_update',
++]);
++const scheduleTools = new Set(SCHEDULE_TOOLS);
++const SCHEDULE_SERVICE = '@deepseek-ai/dsh-schedule';
++/** True when the composition has an enabled `@deepseek-ai/dsh-schedule` row. */
++export function scheduleServiceMounted(loader) {
++    for (const entry of loader?.entries() ?? []) {
++        if (!entry.disabled && entry.options?.name === SCHEDULE_SERVICE)
++            return true;
++    }
++    return false;
++}
++function isPlainObject(value) {
++    return value !== null && typeof value === 'object' && !Array.isArray(value) && !('__jsExpr' in value);
++}
++/** One row's config with the schedule names removed from its toolFilter.deny. */
++function filterConfig(config) {
++    const filter = config.toolFilter;
++    if (!isPlainObject(filter) || !Array.isArray(filter.deny))
++        return config;
++    const deny = filter.deny.filter((name) => !scheduleTools.has(name));
++    if (deny.length === filter.deny.length)
++        return config;
++    const { deny: _removed, ...rest } = filter;
++    const nextFilter = deny.length > 0 ? { ...rest, deny } : rest;
++    const { toolFilter: _old, ...withoutFilter } = config;
++    // tool-subagent throws on a toolFilter naming neither allow nor deny.
++    return nextFilter.allow === undefined && nextFilter.deny === undefined
++        ? withoutFilter
++        : { ...withoutFilter, toolFilter: nextFilter };
++}
++/** Plugin rows, recursing into cordis:group rows, with schedule denies removed. */
++export function withoutScheduleDenies(rows) {
++    if (!Array.isArray(rows))
++        return rows;
++    return rows.map((row) => {
++        if (!isPlainObject(row))
++            return row;
++        if (Array.isArray(row.config))
++            return { ...row, config: withoutScheduleDenies(row.config) };
++        if (isPlainObject(row.config)) {
++            const config = filterConfig(row.config);
++            return config === row.config ? row : { ...row, config };
++        }
++        return row;
++    });
++}
++/** The preset declaration to register: unchanged when the schedule service is mounted. */
++export function presetForComposition(preset, mounted) {
++    return mounted ? preset : { ...preset, plugins: withoutScheduleDenies(preset.plugins) };
++}

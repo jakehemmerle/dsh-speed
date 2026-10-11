@@ -30,7 +30,7 @@ async function setup(tiers = ['priority', 'ultrafast']) {
 }
 
 test('property: bare /speed toggles the two offered speeds and publishes the same saved mode', async () => {
-  const seed = 61120; console.log('TUI property seed', seed);
+  const seed = Number(process.env.FC_SEED ?? 61120); console.log('TUI property seed', seed, 'numRuns', Number(process.env.NUM_RUNS ?? 100));
   await fc.assert(fc.asyncProperty(fc.array(fc.boolean(), { minLength: 1, maxLength: 25 }), async operations => {
     const app = await setup(['priority']);
     try {

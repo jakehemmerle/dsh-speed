@@ -1,0 +1,235 @@
+--- a/lib/types/commands.js
++++ b/lib/types/commands.js
+@@ -64,6 +64,8 @@
+     { name: 'lang', description: 'Switch the UI language (en / zh)' },
+     { name: 'model', description: 'Show the active model' },
+     { name: 'effort', description: 'Adjust the reasoning effort (slider)' },
++    // dsh-omp-keys: Shift+Tab steps effort now; permission modes live here.
++    { name: 'permissions', description: 'Switch the permission preset (same as /permission; Shift+Tab now cycles effort)' },
+     { name: 'thinking', description: 'Toggle extended thinking display' },
+     { name: 'tokens', description: 'Show session token usage' },
+     // Account / policy
+--- a/lib/types/components/EffortChargeGlyph.js
++++ b/lib/types/components/EffortChargeGlyph.js
+@@ -21,6 +21,26 @@
+ import { accentRamp, ignitionColors } from '../trajectory/effortIgnition.js';
+ import { rgbString } from '../trajectory/motion.js';
+ import { interpolateColor } from './Spinner/spinnerUtils.js';
++import { isLightThemeActive } from '../theme.js';
++/**
++ * dsh-omp-keys: omp's per-level thinking colors (default dark theme:
++ * thinkingLow/Medium/High/Xhigh), with darker twins for light themes. Distinct
++ * hues, so the tiers stay apart even on 256-color terminals.
++ */
++const OMP_THINKING = {
++    dark: { minimal: '#808080', low: '#178fb9', medium: '#0088fa', high: '#b281d6', xhigh: '#e5c1ff' },
++    light: { minimal: '#8a8a8a', low: '#0f6d8e', medium: '#0062b8', high: '#7d4fa6', xhigh: '#5b2d86' },
++};
++const OMP_ORDER = ['low', 'medium', 'high', 'xhigh'];
++/** Color for a non-top tier: its omp color by id, else by ladder position. */
++function ompTierColor(themeName, effort, tierIndex, tierCount) {
++    const palette = isLightThemeActive(themeName) ? OMP_THINKING.light : OMP_THINKING.dark;
++    const byId = palette[effort.toLowerCase()];
++    if (byId !== undefined)
++        return byId;
++    const slot = Math.round((tierIndex / Math.max(1, tierCount - 1)) * (OMP_ORDER.length - 1));
++    return palette[OMP_ORDER[slot]];
++}
+ /** 充能时长（ms）。 */
+ const CHARGE_MS = 150;
+ export function EffortChargeGlyph({ effort, levels, working, }) {
+@@ -54,6 +74,15 @@
+             return;
+         return clock.subscribe(() => forceRender(), /* keepAlive */ true);
+     }, [charging, clock]);
++    // dsh-omp-keys: a clean left-edge effort indicator, like omp's
++    // thinking-colored editor edge. Every tier below the top colors the prompt
++    // glyph with omp's color for that thinking level, so the current effort
++    // reads at a glance without extra text; the top tier keeps the original
++    // bold ignition color and charge animation below.
++    const tierIndex = effort !== undefined && levels !== undefined && levels.length > 1 ? levels.indexOf(effort) : -1;
++    if (!topActive && tierIndex >= 0) {
++        return (_jsxs(Text, { color: ompTierColor(themeName, effort, tierIndex, levels.length), dimColor: working, children: ["\u276F", ' '] }));
++    }
+     if (!topActive)
+         return _jsx(Text, { dimColor: working, children: "\u276F " });
+     const ramp = accentRamp(ignitionColors(themeName));
+--- a/lib/types/components/PromptInput.js
++++ b/lib/types/components/PromptInput.js
+@@ -7,6 +7,7 @@
+ import { open, unlink } from 'node:fs/promises';
+ import { basename, resolve } from 'node:path';
+ import { t } from '../i18n.js';
++import { cycleEffort } from '../effortCycle.js';
+ import { kernelDisplayName } from './kernelCatalog.js';
+ import { Box, Text, useInput, useTerminalSize, useTheme } from '../ui.js';
+ import { EffortChargeGlyph } from './EffortChargeGlyph.js';
+@@ -2436,30 +2437,24 @@
+             event.stopImmediatePropagation();
+             return;
+         }
+-        // Shift+Tab cycles the configured session modes (default: 默认 →
+-        // 计划模式 → 完全访问; each mode bundles plan/sandbox/approval atoms —
+-        // see the `modes` config). Must precede the fullscreen editor's Tab
+-        // indentation arm so the expanded editor participates in the cycle too —
+-        // the parser reports backtab as key.tab + key.shift.
++        // dsh-omp-keys: Shift+Tab steps the reasoning effort (omp's
++        // `app.thinking.cycle`); permission modes moved to /permission(s).
++        // Must precede the fullscreen editor's Tab indentation arm so the
++        // expanded editor participates too — the parser reports backtab as
++        // key.tab + key.shift.
+         if (key.tab && key.shift) {
+-            // A backend without native modes has nothing to cycle (capability
+-            // snapshots absent on test stubs = DSH).
+-            if (channel.backendCapabilities?.modes === false) {
+-                channel.notify(t('capability-unavailable-backend', { name: 'mode' }), { color: 'warning', timeoutMs: 4000 });
++            if (channel.backendCapabilities?.effort === false) {
++                channel.notify(t('capability-unavailable-backend', { name: 'effort' }), { color: 'warning', timeoutMs: 4000 });
+                 return;
+             }
+-            // The key is consumed either way. `cycleMode` is best-effort inside the
+-            // channel, but a dropped rejection here would be an unhandledRejection
+-            // (the process guard rethrows everything that is not React #185), and
+-            // an unhandled rejection kills the TUI with the session still open —
+-            // so the caller keeps a catch of its own rather than `void`ing the
+-            // promise (the sibling `/permission` entry point does the same).
+-            void channel.cycleMode().catch((error) => {
+-                channel.notify(t('mode-switch-failed', { err: error instanceof Error ? error.message : String(error) }), {
+-                    color: 'error',
+-                    timeoutMs: 8000,
+-                });
+-            });
++            void cycleEffort(channel);
++            return;
++        }
++        // dsh-omp-keys: Alt+P opens the model picker for this session (omp's
++        // `app.model.selectTemporary`), leaving the draft untouched.
++        if (key.meta && !key.ctrl && !key.super && !key.shift && input === 'p') {
++            event.stopImmediatePropagation();
++            onRunCommand?.('model');
+             return;
+         }
+         // Expanded editor: plain Tab inserts indentation; Shift+Tab was handled
+--- a/lib/types/effortCycle.js
++++ b/lib/types/effortCycle.js
+@@ -0,0 +1,49 @@
++/**
++ * omp-style reasoning-effort cycling (nix-config dsh-omp-keys patch).
++ *
++ * Shift+Tab steps the live route's effort ladder forward and wraps, the way
++ * omp's `app.thinking.cycle` does. The ladder and the write path are the ones
++ * `/effort` uses (`listEfforts` / `setEffort`), so the choice persists exactly
++ * like a slider pick.
++ */
++/**
++ * The level after `current` on `levels`, wrapping. An unknown or absent
++ * current level starts at the first rung. Undefined when there is nothing
++ * to cycle (no ladder, or a single rung).
++ */
++export function nextEffort(levels, current) {
++    if (levels.length < 2)
++        return undefined;
++    const index = current === undefined ? -1 : levels.indexOf(current);
++    return levels[(index + 1) % levels.length];
++}
++let inFlight = false;
++/** Advance the live session to the next effort level and toast it. */
++export async function cycleEffort(channel) {
++    // Holding Shift+Tab repeats faster than the route's list resolves; extra
++    // presses while one step is pending are dropped instead of racing.
++    if (inFlight)
++        return;
++    inFlight = true;
++    try {
++        const { efforts, defaultEffort } = await channel.listEfforts();
++        const levels = efforts.map(effort => effort.id);
++        if (levels.length === 0)
++            return; // listEfforts already notified (unsupported / unavailable)
++        const next = nextEffort(levels, channel.reasoningEffort ?? defaultEffort);
++        if (next === undefined) {
++            channel.notify(`Effort: ${levels[0]} (only level)`, { timeoutMs: 2000 });
++            return;
++        }
++        if (await channel.setEffort(next)) {
++            const label = efforts.find(effort => effort.id === next)?.name ?? next;
++            channel.notify(`Effort: ${label}`, { timeoutMs: 1500 });
++        }
++    }
++    catch (error) {
++        channel.notify(`Effort switch failed: ${error instanceof Error ? error.message : String(error)}`, { color: 'error', timeoutMs: 6000 });
++    }
++    finally {
++        inFlight = false;
++    }
++}
+--- a/lib/types/i18n.js
++++ b/lib/types/i18n.js
+@@ -1411,7 +1411,7 @@
+     'help-move-cursor': { zh: '←/→ 移动光标', en: '←/→ to move cursor' },
+     'help-word-jumps': { zh: '{{mod}}←/→ 按词跳转', en: '{{mod}}←/→ for word jumps' },
+     'help-complete-command': { zh: 'tab 补全命令', en: 'tab to complete command' },
+-    'help-cycle-mode': { zh: 'shift+tab 切换模式', en: 'shift+tab to cycle mode' },
++    'help-cycle-mode': { zh: 'shift+tab 切换思考强度', en: 'shift+tab cycle effort' },
+     'help-open-editor': { zh: '{{key}} 打开编辑器', en: '{{key}} to open editor' },
+     'help-fold-todos': { zh: '{{key}} 折叠待办', en: '{{key}} to fold todos' },
+     'goal-todo-fold-hint': { zh: '{{key}} 折叠', en: '{{key}} to fold' },
+--- a/lib/types/screens/Chat.js
++++ b/lib/types/screens/Chat.js
+@@ -1,6 +1,7 @@
+ import { jsx as _jsx, Fragment as _Fragment, jsxs as _jsxs } from "react/jsx-runtime";
+ import React from 'react';
+ import { t, getLang, setLang, isLang, writeLangPref, readLangPref, subscribeLang, LANGS } from '../i18n.js';
++import { cycleEffort } from '../effortCycle.js';
+ import { checkForTuiUpdate, installedTuiVersion } from '../update.js';
+ import { installedKernelVersion } from '../dsh-adapter/contract.js';
+ import { readThemePref } from '../themePrefs.js';
+@@ -3168,6 +3169,9 @@
+                     void auth.logout();
+                 return true;
+             }
++            // dsh-omp-keys: /permissions is /permission (Shift+Tab now steps effort).
++            case 'permissions':
++                return runCommand('permission', rawInput, images);
+             case 'permission': {
+                 // The command itself is registered by the permission-presets row
+                 // (dsh-base): bare `/permission` opens the preset picker and Enter
+@@ -5624,7 +5628,7 @@
+         const launchpad = (_jsx(Launchpad, { query: launchpadDraft, cursorOffset: launchpadCaret, focusIndex: launchpadFocus, isTerminalFocused: terminalFocused, whale: channel.whale, whaleIdle: channel.whaleIdle, whaleGirl: channel.whaleGirl, fontId: splashFontIdOf(channel.splashFont), brand: brand, starred: starred, onStarClick: runStarAction, firstRun: onboardingPending, actions: launchpadActions, 
+             // 参数行四段点开的既有选择器（第五版）：pickerPanels 与聊天页共用
+             // 同一份 JSX，盖在落地页之上；选择器开着时落地页键盘让位（inputPaused）。
+-            overlayPanel: launchpadOverlayUp ? pickerPanels : undefined, inputPaused: launchpadOverlayUp, onParamPick: (segment) => {
++            overlayPanel: launchpadOverlayUp ? pickerPanels : undefined, inputPaused: launchpadOverlayUp, onCycleEffort: () => { void cycleEffort(channel); }, onParamPick: (segment) => {
+                 // 四段 → 既有命令：model→/model、effort→/effort、preset→/preset、
+                 // permission→/permission。全部在 overlayCommandNames 白名单里，
+                 // 落地页不收，选择器盖上来。
+--- a/lib/types/screens/Launchpad.js
++++ b/lib/types/screens/Launchpad.js
+@@ -238,7 +238,7 @@
+ /** 右下角内核区的目录行（第八版：一行一个内核，当前那个打 ▸）。 */
+ kernels, 
+ /** 右下角内核区被点击/焦点环 Enter 时交给 Chat（打开内核选择器）。 */
+-onKernelPick, cwd, branch, tuiVersion, onFocusChange, onAction, onQueryChange, onSubmit, onEscape, onBlankClick, }) {
++onKernelPick, cwd, branch, tuiVersion, onFocusChange, onAction, onQueryChange, onSubmit, onEscape, onBlankClick, onCycleEffort, }) {
+     const { columns, rows } = useTerminalSize();
+     // `columns`/`rows` 已经是**内容区**尺寸（PageMargin 收窄过 context），
+     // 所以这里不再减页边距——与 splashLayout 的约法一致。
+@@ -425,6 +425,19 @@
+         // 选择器回到这里）。没有这道闸，选择器分支没消费的键会漏进草稿。
+         if (inputPaused)
+             return;
++        // dsh-omp-keys: omp's keys work on the first screen too. Shift+Tab
++        // steps the reasoning effort (↑ still walks the focus ring backward);
++        // Alt+P opens the model picker the parameter row's model chip opens.
++        if (key.tab && key.shift && onCycleEffort !== undefined) {
++            onCycleEffort();
++            event.stopImmediatePropagation();
++            return;
++        }
++        if (key.meta && !key.ctrl && !key.super && !key.shift && input === 'p' && onParamPick !== undefined) {
++            onParamPick('model');
++            event.stopImmediatePropagation();
++            return;
++        }
+         const composing = key.ctrl || key.meta || key.super;
+         // 终端原生粘贴（bracketed paste：Ctrl+Shift+V / 右键 / Shift+Insert）：
+         // ink 把载荷标成 isPasted 交给 useInput；标记字节（\x1b[200~ / 201~）在

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-const { makeProfile, startTui } = await import(process.env.DSH_TEST_RIG ?? homedir() + '/.agents/skills/new-dsh-plugin/scripts/rig.mjs');
+import { makeProfile, startTui } from './rig/rig.mjs';
 import { startMockProxy } from './mock-proxy.js';
 
 async function fixture(t, model, tiers = ['priority', 'ultrafast'], cols = 100) {

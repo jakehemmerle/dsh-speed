@@ -30,7 +30,7 @@
   "scripts": {
     "test": "node --test test/core.test.js test/client.test.js test/runtime.test.js test/real-runtime.test.js test/native-auth.test.js test/proxy.test.js test/modal.test.js test/live-gate.test.js test/tui.test.js",
     "test:live": "node test/live.mjs --live",
-    "test:e2e": "node --test test/e2e.test.js test/tui.e2e.test.js",
+    "test:e2e": "node --test --test-concurrency=1 test/e2e.test.js test/*.e2e.test.js",
     "test:live:agents": "DSH_LIVE_TESTS=1 DSH_LIVE_AGENTS=1 node --test --test-name-pattern=live-account test/e2e.test.js"
   },
   "engines": {
@@ -38,7 +38,7 @@
   },
   "license": "MIT",
   "devDependencies": {
-    "fast-check": "^4.10.2",
-    "playwright": "^1.64.0"
+    "fast-check": "4.10.2",
+    "playwright": "1.63.0"
   }
 }

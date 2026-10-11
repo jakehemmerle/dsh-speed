@@ -1,0 +1,25 @@
+--- a/lib/types/screens/Chat.js
++++ b/lib/types/screens/Chat.js
+@@ -2533,6 +2533,22 @@
+                     return true;
+                 }
+                 setHelpOpen(false);
++                // dsh-model-selector (nix-config): when its scene is registered it
++                // replaces the built-in picker for every bare /model entry point —
++                // typed, the launch page's model segment and the footer segment.
++                if (channel.openPluginScene('model-selector')) {
++                    dispatchOverlay({ type: 'close' });
++                    // A typed `/model` on the launch page has done its job: drop it
++                    // so the page is clean when the scene closes. A real prompt
++                    // draft (model chip clicked mid-sentence) is kept.
++                    setLaunchpadDraft((draft) => {
++                        if (!/^\/model(\s|$)/u.test(draft.trim()))
++                            return draft;
++                        setLaunchpadCaret(0);
++                        return '';
++                    });
++                    return true;
++                }
+                 // Opens over the cached catalog (empty cache shows the loading
+                 // pane); the fresh list lands with the authoritative focus, and the
+                 // kind-guarded set-index cannot re-focus a picker the user left.

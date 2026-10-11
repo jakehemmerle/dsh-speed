@@ -1,0 +1,45 @@
+--- a/lib/types/screens/Launchpad.js
++++ b/lib/types/screens/Launchpad.js
+@@ -13,7 +13,7 @@
+ import { t } from '../i18n.js';
+ import { isMinimalUiMode } from '../minimalUiMode.js';
+ import { stringWidth } from '../ink/stringWidth.js';
+-import { isPlainReturn } from '../utils/modifiers.js';
++import { isMod, isPlainReturn } from '../utils/modifiers.js';
+ import { actionMatches } from '../utils/keymap.js';
+ import { formatClipboardInsert, readClipboard } from '../utils/clipboard.js';
+ import { collapseToSingleLine, insertSingleLineAt, matchesPasteShortcut, stripBracketedPasteMarkers, } from '../utils/inputPaste.js';
+@@ -582,6 +582,33 @@
+             event.stopImmediatePropagation();
+             return;
+         }
++        // Word edits, as in the chat prompt: Ctrl+W deletes the previous word and
++        // Ctrl+Left/Right jump by word (readline whitespace rule). dsh-alt maps
++        // Option+Backspace and Option+arrows onto these.
++        if (isMod(key) && (input === 'w' || key.leftArrow || key.rightArrow)) {
++            if (!inputFocused)
++                return;
++            const at = caret;
++            let start = at;
++            while (start > 0 && /\s/.test(query[start - 1]))
++                start--;
++            while (start > 0 && !/\s/.test(query[start - 1]))
++                start--;
++            if (key.rightArrow) {
++                let end = at;
++                while (end < query.length && !/\s/.test(query[end]))
++                    end++;
++                while (end < query.length && /\s/.test(query[end]))
++                    end++;
++                onQueryChange(query, end);
++            }
++            else if (key.leftArrow)
++                onQueryChange(query, start);
++            else if (start < at)
++                onQueryChange(query.slice(0, start) + query.slice(at), start);
++            event.stopImmediatePropagation();
++            return;
++        }
+         if (key.leftArrow || key.rightArrow || key.home || key.end) {
+             if (!inputFocused)
+                 return;
