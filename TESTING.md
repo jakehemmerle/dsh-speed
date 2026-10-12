@@ -97,10 +97,17 @@ plugin in-process against the real transport/catalog/preferences code with a moc
   `{ timeout: 0 }` (instant Node 24 cancel) was fixed pre-commit as well.
 - `test/traceability.test.js` added this cycle: fails if a SPEC property ID is unmapped above.
 
-## Mutants
+## Mutation results (speed-fid.8) — caught 3/3
 
-Recorded in speed-fid.8 (this cycle): see "Mutation results" below once recorded — three
-deliberate mutants must each be caught by a named property.
+Each mutant was planted one at a time in the working tree, the named suite was run, and the file
+was restored (verified by grep + git diff) before the next. Every mutant was caught by the named
+property; none survived.
+
+| Mutant (realistic bug) | Caught by | Result |
+| --- | --- | --- |
+| M1 `lib/transport.js`: ultrafast-on-completions guard dropped (`if (false)`) | core.test.js 'P-23 ultrafast is rejected on an openai-completions route and reaches the wire on Responses' | caught |
+| M2 `lib/capabilities.js`: `TIERS.fast` maps to 'standard' instead of 'priority' | proxy.test.js 'proxy selection forwards the tier at the final payload, without touching auxiliary requests' | caught |
+| M3 `lib/preferences.js`: record filename ignores the session id (per-account instead of per-key) | core.test.js 'preferences persist atomically with private permissions, serialize concurrent writes, isolate sessions/models' | caught |
 
 ## Release run (round 3, pending)
 
