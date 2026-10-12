@@ -53,7 +53,7 @@
             root = ./.;
             fileset = lib.fileset.unions [
               ./package.json ./package-lock.json ./index.js ./client.js ./cordis.patch.yml
-              ./LICENSE ./README.md ./UPSTREAM.md ./lib ./scripts ./test
+              ./LICENSE ./README.md ./UPSTREAM.md ./SPEC.md ./TESTING.md ./lib ./scripts ./test
             ];
           };
 

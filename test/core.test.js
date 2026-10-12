@@ -130,6 +130,19 @@ test('transport rejects nonofficial matching routes, ignores other models, and c
   const again = installTransport(rt.createModels); again.dispose();
 });
 
+test('P-23 ultrafast is rejected on an openai-completions route and reaches the wire on Responses', async () => {
+  const rt = runtime(), instance = rt.createModels(), shim = installTransport(rt.createModels);
+  try {
+    await assert.rejects(collect(shim.scope({ ...selection, tier: 'ultrafast' }, async function* () {
+      yield instance.streamSimple({ ...model, api: 'openai-completions' }, {}, {});
+    })), /Ultrafast requires the Responses API/);
+    const tiers = await collect(shim.scope({ ...selection, tier: 'ultrafast' }, async function* () {
+      yield instance.streamSimple(model, {}, {}).options.serviceTier;
+    }));
+    assert.equal(tiers[0], 'ultrafast');
+  } finally { shim.dispose(); }
+});
+
 test('host fails visibly when saved Codex acceleration is revoked and allows explicit Standard recovery', async () => {
   const rt = runtime(), effects = [], listeners = {}; let route, accelerated = true, now = 100;
   const ctx = {
