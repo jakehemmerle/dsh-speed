@@ -1,19 +1,17 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { expect } from 'playwright/test';
 import fc from 'fast-check';
 import { homedir } from 'node:os';
-import { makeProfile, startWeb, startTui } from './rig/rig.mjs';
+const { makeProfile, startWeb, startTui } = await import(process.env.DSH_TEST_RIG ?? homedir() + '/.agents/skills/new-dsh-plugin/scripts/rig.mjs');
 import { MODEL_CATALOG, lastUserText, startMockProxy } from './mock-proxy.js';
 
 // Always launch the installed release, never a source CLI or Jake's live profile.
 // DSH_BIN may point at the implementation lead's checked patched-release wrapper.
-// The vendored rig requires DSH_BIN (the flake's pinned, patched dsh).
+// The rig resolves the installed launcher unless DSH_BIN explicitly selects the built release.
 const PLUGIN = fileURLToPath(new URL('../index.js', import.meta.url));
 const BEARER = 'Bearer speed-e2e-mock-key';
 const MODELS = [
@@ -24,9 +22,6 @@ const MODELS = [
 ].map(model => ({ contextWindow: 128000, maxTokens: 8000, input: ['text'], ...model }));
 const TIERS = { Standard: 'default', Fast: 'priority', Ultrafast: 'ultrafast' };
 const MENU_NAME = 'Model and reasoning effort';
-// Screenshots go to a per-run directory, never a fixed shared /tmp path.
-const ARTIFACTS = process.env.DSH_SPEED_ARTIFACTS ?? mkdtempSync(join(tmpdir(), 'dsh-speed-artifacts-'));
-mkdirSync(ARTIFACTS, { recursive: true });
 let browser;
 
 before(async () => {
@@ -81,7 +76,7 @@ async function fixture(t, { native = false, live = false, delegate = false, cata
     if (process.env.DSH_TEST_DEBUG) console.log(profile.logs().slice(-5000));
     if (process.env.DSH_TEST_DEBUG && context?.pages()[0]) {
       console.log(await context.pages()[0].locator('body').innerText());
-      await context.pages()[0].screenshot({ path: join(ARTIFACTS, 'debug-' + Date.now() + '.png') });
+      await context.pages()[0].screenshot({ path: '/tmp/dsh-speed-debug.png' });
     }
     await context?.close();
     await web?.stop();
@@ -291,9 +286,9 @@ test('real DSH blank and chat: Model/Effort/Speed share a menu; Sol and Astra ti
   const root = await openMenu(page);
   await expect(root.getByRole('menuitem', { name: /^Effort(?:\s|$)/ })).toBeVisible();
   await expect(root.getByRole('combobox', { name: 'Speed', exact: true }), 'Speed belongs beside Model and Effort').toBeVisible();
-  await page.screenshot({ path: join(ARTIFACTS, 'menu-light.png') });
+  await page.screenshot({ path: '/tmp/dsh-speed-menu-light.png' });
   await page.emulateMedia({ colorScheme: 'dark' });
-  await page.screenshot({ path: join(ARTIFACTS, 'menu-dark.png') });
+  await page.screenshot({ path: '/tmp/dsh-speed-menu-dark.png' });
   assert.equal(await page.getByRole('button', { name: /^Speed(?:\s|$)/ }).count(), 0, 'No separate Speed toolbar button');
   await page.keyboard.press('Escape');
   for (const [label, id] of [['Sol', 'gpt-6.1-sol'], ['Astra', 'gpt-6-astra']]) {
@@ -456,3 +451,41 @@ test('proxy catalog HTTP and advertised-capability parse errors fail closed, wit
 });
 
 async function pageEscape(page) { await page.keyboard.press('Escape'); }
+
+// Drive the real picker and HTTP handler; only hold the save response and clock.
+test('background polling cannot strand a successful speed save', options, async t => {
+  const { page, profile, mock } = await fixture(t);
+  await connectWorkspace(page, profile);
+  await page.evaluate(() => {
+    const original = window.setInterval;
+    window.setInterval = (fn, ms, ...args) => {
+      if (ms === 30000) window.__speedPoll = fn;
+      return original(fn, ms, ...args);
+    };
+  });
+  for (const [model, label, mode] of [['gpt-6.1-sol', 'Sol', 'fast'], ['gpt-6-astra', 'Astra', 'ultrafast']]) {
+    await chooseModel(page, label);
+    const select = await speedOptions(page);
+    let release, received;
+    const held = new Promise(resolve => { release = resolve; });
+    const saved = new Promise(resolve => { received = resolve; });
+    await page.route('**/api/dsh-speed', async route => {
+      if (route.request().method() !== 'PUT') return route.continue();
+      const response = await route.fetch();
+      received();
+      await held;
+      await route.fulfill({ response });
+    });
+    try {
+      await select.selectOption(mode);
+      await saved;
+      await expect(select).toBeDisabled();
+      await page.evaluate(async () => { await window.__speedPoll(); });
+    } finally { release(); }
+    await expect(select).toBeEnabled();
+    await expect(select).toHaveValue(mode);
+    await page.unroute('**/api/dsh-speed');
+    await page.keyboard.press('Escape');
+    checkWire(await send(page, mock, 'poll-' + mode), model, TIERS[mode === 'fast' ? 'Fast' : 'Ultrafast']);
+  }
+});
