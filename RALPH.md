@@ -71,8 +71,9 @@ Jake's instruction first: audit every closed bead against its recorded evidence 
   16/16 ×5 flake loops.
 - Docs: RELEASING.md + CHANGELOG.md added; TESTING.md release-run section written; traceability
   note refreshed. Version `0.2.0 → 0.2.1-alpha.1` (prerelease channel matches dsh 0.2.1-alpha.2).
-- Board closed: speed-fid.9 then the epic; `bd export` before the release commit. Commit is
-  tagged `v0.2.1-alpha.1` and pushed with the tag.
+- Board closed (post-push, so the close reasons state facts): release commit `bce44c6` tagged
+  `v0.2.1-alpha.1` and pushed with the tag, then speed-fid.9 + the epic closed with the final
+  evidence and `bd export` committed.
 
 ## Test commands
 
