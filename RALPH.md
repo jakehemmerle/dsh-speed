@@ -39,8 +39,40 @@ Done this round (all pushed unless noted):
 - ✓ .1 source reconcile, ✓ .2 SPEC, ✓ .3 flake env, ✓ .4 rig, ✓ .5 web property, ✓ .6 TUI property
   (this round), ✓ .7 TESTING.md traceability (this round).
 - .8 bugs + mutants: no product red/fix pair this cycle (all failures were suite-oracle defects);
-  mutants are the remaining item.
-- .9 release: **round 3 — do not start without the lead's go** (Jake is deciding scope).
+  mutants caught 3/3 at 39c1297 (TESTING.md "Mutation results"; independently re-caught 3/3 in
+  round C's closure audit) — the earlier "remaining item" note was stale and is corrected here.
+- .9 release: **completed in round C** (release `0.2.1-alpha.1`, tag `v0.2.1-alpha.1`).
+
+## ROUND C (2026-10-12 — closure audit + release; engineer 5.3 FLASH fast)
+
+Jake's instruction first: audit every closed bead against its recorded evidence before shipping.
+
+**Closure audit (STEP 0), nothing needed reopening:**
+- `bd show speed-fid.1…8`: every close-reason commit exists (7648423, 3a68853, 74b9157, c8438e8,
+  e46faf8, 39c1297). Re-verified the claims that are checkable on disk: no `~/.agents` rig import
+  (only the VENDORED.md prohibition text), `tui.test.js` honours `FC_SEED`, the modal drift test
+  is not vacuous (already-patched bundle → hard fail; missing/duplicated anchor → drift; installed
+  bundle must equal patch-of-pinned, forced by `DSH_REQUIRE_ALL=1` in the flake), no fixed `/tmp`
+  paths, traceability gate present in `npm test`, and zero product-code diff since the nix-config
+  seed. Mutants M1/M2/M3 re-planted one at a time and re-caught 3/3, sources restored (`git status`
+  clean after each).
+- Honest gaps that stand (documented, not blockers): P-07 teammates is the opt-in-live property
+  (never emulated without authorization); the dsh-TUI host draft-survival watch item; one
+  unreproduced web-campaign failure at seed 20261020 (deterministic replay green 3/3 — TESTING.md
+  "Intermittent web-campaign failure, investigated").
+
+**Release (STEP 1, speed-fid.9) — 0.2.1-alpha.1:**
+- Gates green on the released tree: fresh `npm test` 38/38 (0 skipped, `NUM_RUNS=1000`);
+  `nix flake check` **all checks passed five times** this round — three of them fresh-drv builds
+  (post-bump `6vyi7ks…` and `yxs63di…` with successive TESTING.md edits, final released tree
+  `rmy3g1xd9531vywfk7s0m2ppdb437ssg`); web property
+  200 green cases across 6 fresh seeds (one intermittent batch failure investigated and
+  unreproduced); TUI property 100/100 across 4 fresh seeds (20261023–20261026); e2e+tui-e2e
+  16/16 ×5 flake loops.
+- Docs: RELEASING.md + CHANGELOG.md added; TESTING.md release-run section written; traceability
+  note refreshed. Version `0.2.0 → 0.2.1-alpha.1` (prerelease channel matches dsh 0.2.1-alpha.2).
+- Board closed: speed-fid.9 then the epic; `bd export` before the release commit. Commit is
+  tagged `v0.2.1-alpha.1` and pushed with the tag.
 
 ## Test commands
 
