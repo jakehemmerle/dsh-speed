@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1-alpha.2 — 2026-10-13
+
+- Fix: a background poll started during a web speed save no longer invalidates the save (poll no-ops while a save is in flight).
+- Red: test/e2e.test.js polling case fails at e2e.test.js:457 with the pre-fix client (jobs bash-1527/1529); green 14/14 with the fix (bash-1524). Fast 38/38 at NUM_RUNS=1000 (FC_SEED=424242).
+- Qualified against DSH 0.2.1-alpha.2 and dsh-TUI 0.14.0.
+- Recovered from a parallel fix that landed directly in nix-config (8499b5e) without the repo red stage.
 ## 0.2.1-alpha.1 — 2026-10-12
 
 First tagged release of the rebuilt plugin (seeded from nix-config `pkgs/dsh-speed` at
