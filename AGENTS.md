@@ -1,8 +1,8 @@
 # Agent instructions
 
-- Work is tracked in **beads** (`bd`, prefix `speed`): `bd ready`, `bd show <id>`, `bd close <id> --reason "<evidence>"`.
-  `bd` comes from the flake dev shell (`nix develop`). Run `bd export` before every commit so
-  `.beads/issues.jsonl` is current; the Dolt database itself is not committed.
+- Work is tracked in the workspace Beads instance (`nx`, `~/ws/.beads`), label `project:dsh`.
+  In the `~/ws/code/personal/<repo>` clone `bd` resolves there through `.beads/redirect`
+  (written by `ws sync`); this repo has no Beads database of its own.
 - Read [RALPH.md](RALPH.md) for the current loop state, [SPEC.md](SPEC.md) for the properties and
   [TESTING.md](TESTING.md) for the traceability table and evidence. Releases follow [RELEASING.md](RELEASING.md).
 - Commit straight to `main` as `jakehemmerle <jakehemmerle@protonmail.com>`; stage only your own paths.
