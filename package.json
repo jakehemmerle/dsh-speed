@@ -1,8 +1,8 @@
 {
   "name": "dsh-speed",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "type": "module",
-  "description": "Model-aware Fast and Ultrafast picker for DSH OpenAI and Codex routes",
+  "description": "Account-aware Fast and Ultrafast inside the DSH Model/Effort modal, including trusted ProviderProxy",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
@@ -13,7 +13,8 @@
     "client.js",
     "lib",
     "cordis.patch.yml",
-    "README.md"
+    "README.md",
+    "scripts"
   ],
   "dsh": {
     "bundle": {
@@ -28,11 +29,16 @@
     }
   },
   "scripts": {
-    "test": "node --test test/*.test.js",
-    "test:live": "node test/live.mjs"
+    "test": "node --test test/core.test.js test/client.test.js test/proxy.test.js test/modal.test.js test/real-runtime.test.js",
+    "test:live": "node test/live.mjs",
+    "test:e2e": "node --test --test-concurrency=1 test/e2e.test.js"
   },
   "engines": {
     "node": ">=22.19"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "fast-check": "^4.10.2",
+    "playwright": "^1.64.0"
+  }
 }

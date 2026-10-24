@@ -6,18 +6,18 @@ window.__ModuleLoader__.load({
     const { useState, useEffect, useSyncExternalStore, useRef } = React;
     const labels = { standard: 'Standard', fast: 'Fast ⚡', ultrafast: 'Ultrafast ⚡⚡' };
     function createPicker(fetch) {
-      return function SpeedPicker({ directory, sessionId }) {
+      return function SpeedPicker({ directory, sessionId, locked = false }) {
         const state = useSyncExternalStore(fn => directory.subscribe(fn), () => directory.getSnapshot());
         const current = state.pending ?? state.current;
         const key = JSON.stringify([sessionId, current?.provider, current?.model]);
-        const supported = ['openai', 'openai-codex'].includes(current?.provider);
+        const supported = Boolean(current?.provider && current?.model);
         const [report, setReport] = useState(null);
         const [busy, setBusy] = useState(false);
         const [error, setError] = useState('');
         const generation = useRef(0);
         const [refresh, setRefresh] = useState(0);
         function route() {
-          return 'api/dsh-speed?' + new URLSearchParams({ sessionId, provider: current.provider, model: current.model });
+          return 'api/dsh-speed?' + new URLSearchParams({ sessionId, provider: current.provider, model: current.model, ...(refresh ? { refresh: '1' } : {}) });
         }
         async function readResponse(response) {
           const value = await response.json();
@@ -27,7 +27,7 @@ window.__ModuleLoader__.load({
         useEffect(() => {
           let live = true;
           const id = ++generation.current;
-          setReport(null); setError(''); setBusy(false);
+          setReport(previous => previous?.key === key ? previous : null); setError(''); setBusy(false);
           if (!supported) return () => { live = false; };
           const load = async () => {
             try {
@@ -55,19 +55,27 @@ window.__ModuleLoader__.load({
         }
         if (!supported) return null;
         const visible = report?.key === key ? report : null;
-        return h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--dsw-alias-label-secondary)' } },
-          h('label', null, h('span', { style: { marginRight: 4 } }, 'Speed'),
+        if (visible?.available === false) return null;
+        return h('div', { 'data-dsh-speed-control': '', style: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 5, padding: '6px 7px', fontSize: 12, color: 'var(--dsw-alias-label-secondary)' } },
+          h('label', { style: { display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'space-between', gap: 12 } }, h('span', null, 'Speed'),
             h('select', {
-              'aria-label': 'OpenAI speed', value: visible?.mode ?? 'standard',
-              disabled: busy || !visible || state.status === 'selecting',
+              'aria-label': 'Speed', value: visible?.mode ?? 'standard',
+              disabled: locked || !visible || state.status === 'selecting',
+              'aria-disabled': locked || busy || !visible || state.status === 'selecting',
               title: visible?.warning ?? visible?.note ?? 'Checking supported speeds…',
-              onChange: event => void select(event.target.value),
+              onChange: event => { if (!busy) void select(event.target.value); },
+              onMouseDown: event => { if (busy) event.preventDefault(); },
+              onKeyDown: event => {
+                if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', ' '].includes(event.key)) {
+                  event.stopPropagation(); if (busy) event.preventDefault();
+                }
+              },
               style: { background: 'var(--dsw-specific-menu)', color: 'inherit', border: '1px solid var(--dsw-alias-border-l1)', borderRadius: 6, padding: '2px 4px', font: 'inherit' },
             }, (visible ? [...new Set([...visible.modes, visible.mode])] : ['standard']).map(mode =>
               h('option', { key: mode, value: mode, disabled: visible && !visible.modes.includes(mode) }, labels[mode] + (visible && !visible.modes.includes(mode) ? ' (unavailable)' : ''))))),
           error ? h('span', { role: 'alert', title: error }, error) : null,
           visible?.warning ? h('span', { role: 'alert' }, visible.warning) : null,
-          h('button', { type: 'button', onClick: () => setRefresh(x => x + 1), disabled: busy,
+          h('button', { type: 'button', onClick: () => setRefresh(x => x + 1), disabled: locked || busy,
             'aria-label': 'Refresh speed options', title: 'Refresh speed options',
             style: { color: 'inherit', background: 'none', border: 0, cursor: 'pointer', padding: 2 } }, '↻'));
       };
@@ -76,8 +84,8 @@ window.__ModuleLoader__.load({
       inject: ['slots', 'modelDirectories'],
       apply(ctx) {
         const Picker = createPicker((...args) => window.fetch(...args));
-        ctx.slots.inject('conversation.input.right', () => ctx.slots.register({
-          name: 'conversation.input.right', id: 'dsh-speed', order: -10,
+        ctx.slots.inject('conversation.input.model.controls', () => ctx.slots.register({
+          name: 'conversation.input.model.controls', id: 'dsh-speed',
           inject: sessionId => ({ sessionId, directory: ctx.modelDirectories.directoryFor(sessionId).store }),
         }, Picker));
       },

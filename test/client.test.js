@@ -5,9 +5,9 @@ import vm from 'node:vm';
 
 // Deterministic hook harness: verify the picker wiring and async guards without
 // a second web server, a paid request, or altering the live DSH profile.
-async function harness(fetch) {
+async function harness(fetch, initial = { provider: 'openai', model: 'gpt-6-astra' }) {
   let exported, cursor = 0, hooks = [], effects = [], pending = [];
-  let current = { provider: 'openai', model: 'gpt-6-astra' };
+  let current = initial;
   const React = {
     createElement(type, props, ...children) { return { type, props: props ?? {}, children: children.flat() }; },
     useState(value) {
@@ -60,14 +60,14 @@ test('picker shows model-supported options and sends a session/model scoped sele
     assert.deepEqual(JSON.parse(put.init.body), { sessionId: 'session', provider: 'openai', model: 'gpt-6-astra', mode: 'ultrafast' });
   } finally { ui.dispose(); }
 });
-test('picker ignores stale GET responses after model switches and hides on non-OpenAI routes', async () => {
+test('picker ignores stale GET responses after model switches and hides unavailable providers', async () => {
   let resolve;
   const ui = await harness(async () => new Promise(r => { resolve = r; }));
   try {
     ui.render();
     ui.switchModel({ provider: 'anthropic', model: 'claude' });
-    assert.equal(ui.render(), null);
-    resolve(Response.json(report)); await settle(); assert.equal(ui.render(), null);
+    ui.render();
+    resolve(Response.json({ ...report, available: false })); await settle(); assert.equal(ui.render(), null);
     ui.switchModel({ provider: 'openai', model: 'unknown' });
     assert.equal(nodes(ui.render(), 'select')[0].props.disabled, true);
   } finally { ui.dispose(); }
@@ -81,4 +81,10 @@ test('picker surfaces revoked saved tier and does not silently display Standard'
     assert.equal(unavailable.props.disabled, true);
     assert.equal(nodes(tree, 'span').some(n => n.props.role === 'alert'), true);
   } finally { ui.dispose(); }
+});
+
+test('proxy picker is report-driven', async () => {
+  const ui = await harness(async () => Response.json(report), { provider: 'providerproxy', model: 'gpt-6.1-sol' });
+  try { ui.render(); await settle(); const tree = ui.render(); assert.equal(nodes(tree, 'select').length, 1); assert.deepEqual(nodes(tree, 'option').map(n => n.props.value), ['standard', 'fast', 'ultrafast']); }
+  finally { ui.dispose(); }
 });
