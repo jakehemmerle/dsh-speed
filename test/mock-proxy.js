@@ -4,7 +4,7 @@ export const MODEL_CATALOG = {
   object: 'list',
   data: [
     { id: 'gpt-6.1-sol', service_tiers: ['priority', 'ultrafast'] },
-    { id: 'gpt-6.1-astra', service_tiers: ['priority', 'ultrafast'] },
+    { id: 'gpt-6-astra', service_tiers: ['priority', 'ultrafast'] },
     { id: 'claude-sonnet-4-6', service_tiers: ['default'] },
     { id: 'unknown-model', service_tiers: ['default'] },
   ],
@@ -102,7 +102,7 @@ export async function startMockProxy({ catalog = MODEL_CATALOG, catalogStatus = 
         };
         const timer = setTimeout(() => {
           waiters.delete(notify);
-          reject(new Error('Timed out waiting for mock request; captured: ' + requests.map(value => value.method + ' ' + value.url).join(', ')));
+          reject(new Error('Timed out waiting for mock request; captured: ' + requests.map(value => value.method + ' ' + value.url + ' ' + JSON.stringify(value.body?.input ?? []).slice(-1200)).join(', ')));
         }, timeout);
         waiters.add(notify);
         notify();

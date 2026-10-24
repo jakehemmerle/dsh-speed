@@ -60,14 +60,14 @@ test('picker shows model-supported options and sends a session/model scoped sele
     assert.deepEqual(JSON.parse(put.init.body), { sessionId: 'session', provider: 'openai', model: 'gpt-6-astra', mode: 'ultrafast' });
   } finally { ui.dispose(); }
 });
-test('picker ignores stale GET responses after model switches and hides on non-OpenAI routes', async () => {
+test('picker ignores stale GET responses after model switches and hides unavailable providers', async () => {
   let resolve;
   const ui = await harness(async () => new Promise(r => { resolve = r; }));
   try {
     ui.render();
     ui.switchModel({ provider: 'anthropic', model: 'claude' });
-    assert.equal(ui.render(), null);
-    resolve(Response.json(report)); await settle(); assert.equal(ui.render(), null);
+    ui.render();
+    resolve(Response.json({ ...report, available: false })); await settle(); assert.equal(ui.render(), null);
     ui.switchModel({ provider: 'openai', model: 'unknown' });
     assert.equal(nodes(ui.render(), 'select')[0].props.disabled, true);
   } finally { ui.dispose(); }

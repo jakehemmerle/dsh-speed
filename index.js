@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { apiModes, TIERS } from './lib/capabilities.js';
 import { createCatalog } from './lib/catalog.js';
+import { createProxyCatalog, normalizeProxyProviders } from './lib/proxy-catalog.js';
 import { createPreferences, validSelection } from './lib/preferences.js';
 import { installTransport } from './lib/transport.js';
 
@@ -48,9 +49,17 @@ export function createPlugin(deps = {}) {
       fetch: deps.fetch, now: deps.now, signal: lifetime.signal,
       clientVersion: config.codexClientVersion ?? '0.160.1',
     });
-    const transport = installTransport(createModels);
+    const proxyProviders = normalizeProxyProviders(config.proxyProviders);
+    const proxyCatalog = createProxyCatalog({ providers: proxyProviders, env: deps.env, fetch: deps.fetch,
+      now: deps.now, signal: lifetime.signal, ttl: config.catalogTtlMs ?? 60_000 });
+    const supported = provider => ['openai', 'openai-codex'].includes(provider) || proxyProviders.has(provider);
+    const transport = installTransport(createModels, proxyProviders);
     ctx.effect(() => () => { lifetime.abort(); transport.dispose(); }, 'dsh-speed: transport and catalog lifetime');
-    async function capabilities(provider, model) {
+    async function capabilities(provider, model, refresh = false) {
+      if (proxyProviders.has(provider)) {
+        const report = await proxyCatalog(provider, refresh);
+        return { modes: report.models.get(model) ?? ['standard'], note: report.note };
+      }
       if (provider === 'openai') return { modes: apiModes(model, config),
         note: 'Fast and Ultrafast cost more. API access and rate limits are enforced by OpenAI.' };
       if (provider === 'openai-codex') {
@@ -60,7 +69,7 @@ export function createPlugin(deps = {}) {
       return { modes: ['standard'], note: 'Speed selection is unavailable for this provider' };
     }
     ctx.on('llm/stream', async function* (options, next) {
-      if (!options.sessionId || options.purpose || !['openai', 'openai-codex'].includes(options.provider)) {
+      if (!options.sessionId || options.purpose || !supported(options.provider)) {
         yield* next(); return;
       }
       const mode = preferences.get(options);
@@ -82,9 +91,9 @@ export function createPlugin(deps = {}) {
             model: url.searchParams.get('model'), mode: 'standard',
           };
           if (!validSelection(s)) return json({ error: 'Invalid speed selection' }, 400);
-          const report = await capabilities(s.provider, s.model);
+          const report = await capabilities(s.provider, s.model, url.searchParams.get('refresh') === '1');
           if (request.method === 'PUT') {
-            if (!['openai', 'openai-codex'].includes(s.provider) || !report.modes.includes(s.mode)) {
+            if (!supported(s.provider) || !report.modes.includes(s.mode)) {
               return json({ error: 'This speed is not available for the selected model/account' }, 400);
             }
             // Verify this is a registered model without making a generation request.
@@ -92,7 +101,7 @@ export function createPlugin(deps = {}) {
             await preferences.set({ sessionId: s.sessionId, provider: s.provider, model: s.model, mode: s.mode });
           }
           const mode = preferences.get(s) ?? 'standard';
-          return json({ ...report, mode, available: ['openai', 'openai-codex'].includes(s.provider),
+          return json({ ...report, mode, available: supported(s.provider),
             ...(report.modes.includes(mode) ? {} : { warning: 'Saved speed unavailable; choose Standard before sending' }) });
         } catch (e) {
           if (e instanceof SyntaxError) return json({ error: 'Malformed JSON' }, 400);

@@ -7,12 +7,12 @@ const baseURL = 'http://127.0.0.1:4123/v1';
 const selection = { sessionId: 'session', provider: 'providerproxy', model: 'gpt-6.1-sol' };
 async function setup({ tiers = ['priority', 'ultrafast'], fetch, modelBase = baseURL } = {}) {
   const effects = [], listeners = {}, calls = [];
-  let route;
+  let route, clock = 0;
   class Models { streamSimple(model, context, options) { return { model, options }; } }
   const models = new Models();
   const model = { provider: selection.provider, id: selection.model, api: 'openai-responses', baseUrl: modelBase };
   await createPlugin({ loadRuntime: async () => ({ createModels: () => new Models() }),
-    env: { MOCK_KEY: 'proxy-test-token' },
+    env: { MOCK_KEY: 'proxy-test-token' }, now: () => clock,
     fetch: fetch ?? (async (url, init) => { calls.push({ url, init }); return Response.json({ object: 'list', data: [
       { id: selection.model, service_tiers: tiers }, { id: 'claude-opus-5-5', service_tiers: ['default'] },
     ] }); }),
@@ -20,7 +20,7 @@ async function setup({ tiers = ['priority', 'ultrafast'], fetch, modelBase = bas
     llm: { resolveModelInfo: async () => model }, on(name, fn) { listeners[name] = fn; },
     effect(fn) { effects.push(fn()); }, connection: { fetch: { register(value) { route = value; return () => {}; } } },
   }, { stateFile: false, proxyProviders: { providerproxy: { baseURL, apiKeyEnv: 'MOCK_KEY' } }, catalogTtlMs: 1 });
-  return { model, models, calls, listeners,
+  return { model, models, calls, listeners, advance: ms => { clock += ms; },
     get: async (s = selection) => route.fetch(new Request('http://localhost/api/dsh-speed?' + new URLSearchParams(s))),
     put: async (mode, s = selection) => route.fetch(new Request('http://localhost/api/dsh-speed', { method: 'PUT', body: JSON.stringify({ ...s, mode }) })),
     dispose: () => { for (const fn of effects.reverse()) fn?.(); },
@@ -71,7 +71,7 @@ test('revoked or failed proxy catalog rejects saved acceleration instead of sile
     available = false;
     const next = async function* () { assert.fail('must not reach inference'); };
     // TTL is advanced deterministically via a separately unavailable catalog in tests below.
-    await new Promise(resolve => setTimeout(resolve, 5));
+    app.advance(2);
     const report = await (await app.get()).json();
     assert.deepEqual(report.modes, ['standard']); assert.equal(report.mode, 'fast'); assert.ok(report.warning);
     await assert.rejects(collect(app.listeners['llm/stream'](selection, next)), /no longer available/);

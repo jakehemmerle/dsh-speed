@@ -16,7 +16,7 @@ const PLUGIN = fileURLToPath(new URL('../index.js', import.meta.url));
 const BEARER = 'Bearer speed-e2e-mock-key';
 const MODELS = [
   { id: 'gpt-6.1-sol', name: 'Sol', reasoningEfforts: { low: 'low', high: 'high' } },
-  { id: 'gpt-6.1-astra', name: 'Astra', reasoningEfforts: { low: 'low', high: 'high' } },
+  { id: 'gpt-6-astra', name: 'Astra', reasoningEfforts: { low: 'low', high: 'high' } },
   { id: 'claude-sonnet-4-6', name: 'Claude', reasoningEfforts: false },
   { id: 'unknown-model', name: 'Unknown', reasoningEfforts: false },
 ].map(model => ({ contextWindow: 128000, maxTokens: 8000, input: ['text'], ...model }));
@@ -178,7 +178,7 @@ test('real DSH blank and chat: Model/Effort/Speed share a menu; Sol and Astra ti
   await expect(root.getByRole('combobox', { name: 'Speed', exact: true }), 'Speed belongs beside Model and Effort').toBeVisible();
   assert.equal(await page.getByRole('button', { name: /^Speed(?:\s|$)/ }).count(), 0, 'No separate Speed toolbar button');
   await page.keyboard.press('Escape');
-  for (const [label, id] of [['Sol', 'gpt-6.1-sol'], ['Astra', 'gpt-6.1-astra']]) {
+  for (const [label, id] of [['Sol', 'gpt-6.1-sol'], ['Astra', 'gpt-6-astra']]) {
     if (label !== 'Sol') await chooseModel(page, label);
     // Deterministic property samples exercise differing orders of all three public choices.
     const order = fc.sample(fc.shuffledSubarray(Object.keys(TIERS), { minLength: 3, maxLength: 3 }), { seed: label === 'Sol' ? 20261010 : 20261011, numRuns: 1 })[0];
@@ -214,11 +214,16 @@ test('model and effort switching preserve isolated preferences; Claude, unknown 
   await assertSpeed(page, 'Ultrafast');
   for (const [name, id] of [['Claude', 'claude-sonnet-4-6'], ['Unknown', 'unknown-model'], ['Sol (other route)', 'gpt-6.1-sol']]) {
     await chooseModel(page, name);
-    const speed = await speedOptions(page);
-    await expect(speed).toHaveValue('standard');
-    for (const label of ['Fast', 'Ultrafast']) {
-      const item = speed.getByRole('option', { name: label, exact: true });
-      if (await item.count()) await expect(item).toBeDisabled();
+    if (name === 'Sol (other route)') {
+      const root = await openMenu(page);
+      await expect(root.getByRole('combobox', { name: 'Speed', exact: true })).toHaveCount(0);
+    } else {
+      const speed = await speedOptions(page);
+      await expect(speed).toHaveValue('standard');
+      for (const label of ['Fast', 'Ultrafast']) {
+        const item = speed.getByRole('option', { name: label, exact: true });
+        if (await item.count()) await expect(item).toBeDisabled();
+      }
     }
     await page.keyboard.press('Escape');
     const wire = await send(page, mock, 'standard-only-' + name);
@@ -243,12 +248,12 @@ test('authenticated speed route rejects missing cookies; preferences isolate ses
   assert.deepEqual(capabilities.modes, ['standard', 'fast', 'ultrafast']);
   assert.equal((await putSpeed(env.web, { ...sol, mode: 'fast' })).status, 200);
   assert.equal((await getSpeed(env.web, sol)).mode, 'fast');
-  for (const selection of [{ ...sol, sessionId: 'session-speed-e2e-two' }, { ...sol, model: 'gpt-6.1-astra' }, { ...sol, provider: 'otherproxy' }]) {
+  for (const selection of [{ ...sol, sessionId: 'session-speed-e2e-two' }, { ...sol, model: 'gpt-6-astra' }, { ...sol, provider: 'otherproxy' }]) {
     assert.equal((await getSpeed(env.web, selection)).mode, 'standard');
   }
   await env.restart();
   assert.equal((await getSpeed(env.web, sol)).mode, 'fast', 'Same isolated HOME must restore saved session/model preference');
-  assert.equal((await getSpeed(env.web, { ...sol, model: 'gpt-6.1-astra' })).mode, 'standard');
+  assert.equal((await getSpeed(env.web, { ...sol, model: 'gpt-6-astra' })).mode, 'standard');
   assert.equal(env.mock.turns().length, 0, 'Route tests never incur a generation');
 });
 
